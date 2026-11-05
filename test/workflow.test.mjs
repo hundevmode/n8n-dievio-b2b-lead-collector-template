@@ -43,6 +43,25 @@ test('webhook input cannot override the destination, provider URL or paid reques
     })
 })
 
+test('the n8n v2 IF filters route rejected requests and empty results to their response nodes', () => {
+    const validation = node('Is Request Valid?')
+    const matches = node('Has Leads?')
+    for (const item of [validation, matches]) {
+        assert.equal(item.typeVersion, 2)
+        assert.equal(item.parameters.conditions.options.version, 1)
+        assert.equal(item.parameters.conditions.conditions.length, 1)
+    }
+    const [validRule] = validation.parameters.conditions.conditions
+    assert.equal(validRule.leftValue, '={{ $json.ok }}')
+    assert.deepEqual(validRule.operator, { type: 'boolean', operation: 'true', singleValue: true })
+    assert.equal(workflow.connections[validation.name].main[1][0].node, 'Respond Validation Error')
+    const [countRule] = matches.parameters.conditions.conditions
+    assert.equal(countRule.leftValue, '={{ $json.leadsCount }}')
+    assert.equal(countRule.rightValue, 0)
+    assert.deepEqual(countRule.operator, { type: 'number', operation: 'gt' })
+    assert.equal(workflow.connections[matches.name].main[1][0].node, 'Build Empty Response')
+})
+
 test('response mapping reports a write, no match or API failure correctly', () => {
     const request = execute('Fetch Dievio Leads', execute('Prepare Request', { body: {} }))
     const previous = { 'Fetch Dievio Leads': request }

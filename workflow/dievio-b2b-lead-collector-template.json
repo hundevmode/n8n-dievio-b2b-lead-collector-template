@@ -40,12 +40,25 @@
     {
       "parameters": {
         "conditions": {
-          "boolean": [
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
             {
-              "value1": "={{$json.ok}}",
-              "operation": "isTrue"
+              "id": "request-is-valid",
+              "leftValue": "={{ $json.ok }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
             }
-          ]
+          ],
+          "combinator": "and"
         },
         "options": {}
       },
@@ -91,13 +104,24 @@
     {
       "parameters": {
         "conditions": {
-          "number": [
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
             {
-              "value1": "={{$json.leadsCount}}",
-              "operation": "larger",
-              "value2": 0
+              "id": "has-matching-leads",
+              "leftValue": "={{ $json.leadsCount }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
             }
-          ]
+          ],
+          "combinator": "and"
         },
         "options": {}
       },
@@ -591,5 +615,5 @@
     }
   },
   "active": false,
-  "versionId": "263becef-ff08-4396-94df-897f2e1c4c8e"
+  "versionId": "516d3e64-477f-4f6e-8d4a-934b82967940"
 }
