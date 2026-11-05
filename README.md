@@ -1,122 +1,50 @@
-# n8n Dievio B2B Lead Collector Template (Google Sheets + API)
+# Dievio lead search to Google Sheets with n8n
 
-A production-ready **n8n workflow template** to collect **B2B leads** from the **Dievio API** and automatically append results to **Google Sheets**.
+Import the [Dievio lead collector workflow](workflow/dievio-b2b-lead-collector-template.json) to retrieve one page of B2B contacts with Dievio and append the results to a fixed Google Sheets tab. The workflow starts inactive and requires separate credentials for the incoming webhook and the Dievio API.
 
-> **Sidebar Link (Dievio):** [Dievio API Docs](https://docs.dievio.com/api-reference/overview)
+## Set up the workflow
 
-## Why this template
+1. Use **Import from File** in n8n and select the workflow JSON.
+2. In **Webhook In**, create a Header Auth credential. Set the name to `X-Webhook-Secret` and choose a private value for the client that calls the webhook.
+3. In **Run Dievio Search**, select a different Header Auth credential. Set the name to `X-API-Key` and use your [Dievio API key](https://dievio.com/dashboard/api). The node sends requests to `https://dievio.com/api/public/search`.
+4. In **Prepare Request**, set the spreadsheet ID and tab name. In **Append Rows To Google Sheets**, connect a Google Sheets credential with edit access to that sheet.
+5. Put these headers in the first row of the target tab.
 
-If you need an n8n workflow for lead generation, this template gives you a fast setup for:
-
-- B2B contact discovery via Dievio filters
-- verified email-focused lead pulls
-- direct Google Sheets output for sales ops, outreach, and CRM prep
-- webhook-based automation (works with forms, bots, internal tools)
-
-## What this workflow does
-
-1. Receives a POST request in n8n Webhook
-2. Validates input parameters (result limits, filters, sheet target)
-3. Calls Dievio `POST /api/public/search` via HTTP Request node
-4. Normalizes lead fields for tabular export
-5. Appends rows to Google Sheets
-6. Returns a structured JSON response with run summary
-
-## Template files
-
-- `workflow/dievio-b2b-lead-collector-template.json` - importable n8n workflow export with **API key placeholder**
-
-## Required credentials and setup
-
-### 1) Dievio API key
-
-In node **Run Dievio Search**, set header:
-
-- `X-API-Key: PASTE_DIEVIO_API_KEY_HERE`
-
-Replace placeholder with your real key.
-
-### 2) Google Sheets credentials in n8n
-
-Use Google Sheets OAuth2 credential in n8n and connect it to the Google Sheets node.
-
-### 3) Spreadsheet and tab
-
-The workflow appends rows into your selected document/tab.
-
-## Input payload example
-
-```json
-{
-  "spreadsheetId": "YOUR_GOOGLE_SHEET_ID",
-  "sheetName": "Leads",
-  "maxResults": 50,
-  "perPage": 50,
-  "includeEmails": true,
-  "emailStatus": "verified",
-  "filters": {
-    "job_titles": ["Founder"],
-    "person_location_country": ["United States"],
-    "business_model": ["b2b"]
-  }
-}
+```text
+request_id,collected_at,first_name,last_name,full_name,job_title,company,city,state,country,work_email,email_status,mobile_phone,phone_status,linkedin_url,linkedin_status,twitter_status,facebook_status
 ```
 
-## Test request (cURL)
+## Run a one-row test
+
+Select **Listen for test event** on **Webhook In**. Send a request to the test URL from your n8n instance using the webhook credential.
 
 ```bash
-curl -X POST 'https://YOUR_N8N_DOMAIN/webhook/dievio-b2b-leads' \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "spreadsheetId":"YOUR_GOOGLE_SHEET_ID",
-    "sheetName":"Leads",
-    "maxResults":50,
-    "perPage":50,
-    "includeEmails":true,
-    "emailStatus":"verified",
-    "filters":{
-      "job_titles":["Founder"],
-      "person_location_country":["United States"],
-      "business_model":["b2b"]
+curl --request POST "$N8N_TEST_WEBHOOK_URL" \
+  --header "X-Webhook-Secret: $N8N_WEBHOOK_SECRET" \
+  --header 'Content-Type: application/json' \
+  --data '{
+    "maxResults": 1,
+    "includeEmails": true,
+    "emailStatus": "verified",
+    "filters": {
+      "company_websites": ["stripe.com"],
+      "job_titles": ["Founder"]
     }
   }'
 ```
 
-## Main lead fields written to Google Sheets
+Check that a row was added and that the JSON response shows `writtenRows: 1`. A search with no matches returns `writtenRows: 0` without calling Google Sheets. Once the test works, activate the workflow and switch your client to the production URL.
 
-- `first_name`, `last_name`, `full_name`
-- `job_title`, `company`
-- `city`, `state`, `country`
-- `work_email`, `personal_emails`, `email_status`
-- `mobile_phone`, `phone_status`
-- `linkedin_url`, `linkedin_status`
-- `request_id`, `collected_at`
+Each run requests one page, with a default of one result and a maximum of 100. The response includes `hasMore` from Dievio. The workflow uses the API credit balance and appends the returned work contact fields. Phone retrieval is opt-in through `includePhones`. The webhook response contains counts rather than contact rows.
 
-## SEO keywords covered naturally
+Use `emailStatus: "verified"` to request records with an available work email. Check deliverability separately if your workflow requires it. If the Sheet write fails after a successful Dievio search, check the n8n execution before retrying. The API search may already have consumed credits.
 
-This workflow is relevant for users searching terms like:
+Each webhook call starts a separate search. If you build a custom workflow, you can retry the same Search API page within one hour using a stable `Idempotency-Key` from the first attempt. Handle repeat writes to Google Sheets separately. [Search API retry rules](https://docs.dievio.com/api-reference/search#retry-a-page-safely)
 
-- n8n lead generation workflow
-- Dievio API n8n integration
-- n8n Google Sheets lead scraper
-- B2B contact enrichment automation
-- webhook to Google Sheets leads pipeline
-
-## Import into n8n
-
-1. Open n8n
-2. Click **Import from file**
-3. Select `workflow/dievio-b2b-lead-collector-template.json`
-4. Configure credentials
-5. Activate workflow
-
-## Dievio references
-
-- [API Overview](https://docs.dievio.com/api-reference/overview)
-- [Authentication](https://docs.dievio.com/api-reference/authentication)
-- [Lead Search](https://docs.dievio.com/api-reference/search)
-- [Filters](https://docs.dievio.com/api-reference/filters)
-- [Pagination](https://docs.dievio.com/api-reference/pagination)
+- [Dievio API overview](https://dievio.com/api)
+- [Dievio setup guide](https://dievio.com/integrations/n8n)
+- [Import and export workflows in n8n](https://docs.n8n.io/workflows/export-import/)
+- [n8n Webhook authentication](https://docs.n8n.io/integrations/builtin/core-nodes/n8n-nodes-base.webhook/)
 
 ## License
 

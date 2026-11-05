@@ -11,7 +11,8 @@
         "httpMethod": "POST",
         "path": "dievio-b2b-leads",
         "responseMode": "responseNode",
-        "options": {}
+        "options": {},
+        "authentication": "headerAuth"
       },
       "id": "webhook-in",
       "name": "Webhook In",
@@ -25,7 +26,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const payload = $json.body ?? $json;\n\nfunction asBool(v, fallback) {\n  if (v === undefined || v === null || v === '') return fallback;\n  if (typeof v === 'boolean') return v;\n  if (typeof v === 'number') return v !== 0;\n  if (typeof v === 'string') return ['1','true','yes','y','on'].includes(v.toLowerCase().trim());\n  return fallback;\n}\n\nfunction asInt(v, fallback, min, max) {\n  const n = Number.parseInt(v, 10);\n  if (!Number.isFinite(n)) return fallback;\n  return Math.max(min, Math.min(max, n));\n}\n\nconst spreadsheetId = payload.spreadsheetId || payload.sheetId || payload.googleSheets?.spreadsheetId || '';\nconst sheetName = payload.sheetName || payload.googleSheets?.sheetName || 'Leads';\n\nconst config = {\n  endpoint: payload.endpoint || 'https://dievio.com/api/public/search',\n  perPage: asInt(payload.perPage ?? payload._per_page, 100, 1, 1000),\n  maxResults: asInt(payload.maxResults ?? payload.max_results, 1000, 1, 100000),\n  includeEmails: asBool(payload.includeEmails, true),\n  includePhones: asBool(payload.includePhones, false),\n  emailStatus: (payload.emailStatus || 'all').toString().toLowerCase(),\n  includeRaw: asBool(payload.includeRaw ?? payload._include_raw, false),\n  filters: (payload.filters && typeof payload.filters === 'object' && !Array.isArray(payload.filters)) ? payload.filters : {},\n  googleSheets: {\n    spreadsheetId,\n    sheetName\n  }\n};\n\nif (!config.googleSheets.spreadsheetId) {\n  return [{\n    json: {\n      ok: false,\n      error: 'Missing Google Spreadsheet ID',\n      hint: 'Send spreadsheetId in the request body.'\n    }\n  }];\n}\n\nconst validEmailStatus = ['all', 'verified', 'likely'];\nif (!validEmailStatus.includes(config.emailStatus)) {\n  return [{\n    json: {\n      ok: false,\n      error: 'Invalid emailStatus',\n      hint: 'Use one of: all, verified, likely.'\n    }\n  }];\n}\n\nreturn [{\n  json: {\n    ok: true,\n    requestId: 'dievio-' + Date.now(),\n    config\n  }\n}];"
+        "jsCode": "const payload = $json.body ?? $json;\nconst spreadsheetId = 'REPLACE_WITH_SPREADSHEET_ID';\nconst sheetName = 'Leads';\n\nfunction invalid(error) {\n  return [{ json: { ok: false, error } }];\n}\n\nif (!payload || typeof payload !== 'object' || Array.isArray(payload)) {\n  return invalid('Send a JSON object.');\n}\nif (spreadsheetId === 'REPLACE_WITH_SPREADSHEET_ID' || !/^[A-Za-z0-9_-]+$/.test(spreadsheetId)) {\n  return invalid('Set the spreadsheet ID in Prepare Request before running this workflow.');\n}\nconst fixedSettings = ['endpoint', 'spreadsheetId', 'sheetId', 'sheetName', 'googleSheets', 'includeRaw', '_include_raw'];\nif (fixedSettings.some(key => Object.hasOwn(payload, key))) {\n  return invalid('The API endpoint and Google Sheets destination are configured in the workflow.');\n}\nconst maxResults = Number(payload.maxResults ?? 1);\nif (!Number.isInteger(maxResults) || maxResults < 1 || maxResults > 100) {\n  return invalid('maxResults must be an integer from 1 to 100.');\n}\nconst filters = payload.filters ?? {};\nif (!filters || typeof filters !== 'object' || Array.isArray(filters)) {\n  return invalid('filters must be a JSON object.');\n}\nconst emailStatus = payload.emailStatus ?? 'all';\nif (!['all', 'verified', 'likely'].includes(emailStatus)) {\n  return invalid('emailStatus must be all, verified or likely.');\n}\n\nreturn [{ json: {\n  ok: true,\n  requestId: 'dievio-' + $execution.id,\n  config: { spreadsheetId, sheetName, maxResults },\n  filters,\n  includeEmails: payload.includeEmails !== false,\n  includePhones: payload.includePhones === true,\n  emailStatus\n} }];"
       },
       "id": "prepare-request",
       "name": "Prepare Request",
@@ -61,7 +62,9 @@
       "parameters": {
         "respondWith": "json",
         "responseBody": "={{$json}}",
-        "options": {}
+        "options": {
+          "responseCode": 400
+        }
       },
       "id": "respond-validation-error",
       "name": "Respond Validation Error",
@@ -74,7 +77,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const { config, requestId } = $json;\n\nconst dievioBody = {\n  _per_page: config.perPage,\n  _page: 1,\n  max_results: config.maxResults,\n  _include_raw: config.includeRaw,\n  include_emails: config.includeEmails,\n  include_phones: config.includePhones,\n  email_status: config.emailStatus,\n  ...config.filters\n};\n\nreturn [{\n  json: {\n    ok: true,\n    requestId,\n    config,\n    dievioBody\n  }\n}];"
+        "jsCode": "const { config, filters, requestId, includeEmails, includePhones, emailStatus } = $json;\n\nreturn [{ json: {\n  requestId,\n  config,\n  dievioBody: {\n    ...filters,\n    _page: 1,\n    _per_page: config.maxResults,\n    max_results: config.maxResults,\n    _include_raw: false,\n    include_raw: false,\n    include_emails: includeEmails,\n    include_phones: includePhones,\n    email_status: emailStatus\n  }\n} }];"
       },
       "id": "fetch-dievio",
       "name": "Fetch Dievio Leads",
@@ -109,7 +112,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const j = $json;\nreturn [{\n  json: {\n    ok: true,\n    requestId: j.requestId,\n    message: 'No leads found for given filters.',\n    totalLeads: 0,\n    pagesFetched: j.pagesFetched,\n    sheetWritten: false,\n    spreadsheetId: j.config.googleSheets.spreadsheetId,\n    sheetName: j.config.googleSheets.sheetName\n  }\n}];"
+        "jsCode": "return [{ json: {\n  ok: true,\n  requestId: $json.requestId,\n  totalLeads: 0,\n  writtenRows: 0,\n  pagesFetched: $json.pagesFetched,\n  hasMore: $json.hasMore,\n  sheetWritten: false\n} }];"
       },
       "id": "build-empty-response",
       "name": "Build Empty Response",
@@ -122,7 +125,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const { leads, config } = $json;\nreturn (leads || []).map((lead) => ({\n  json: {\n    ...lead,\n    googleSheets: config.googleSheets\n  }\n}));"
+        "jsCode": "return $json.leads.map(lead => ({ json: lead }));"
       },
       "id": "expand-leads",
       "name": "Expand Lead Items",
@@ -138,17 +141,13 @@
         "operation": "append",
         "documentId": {
           "__rl": true,
-          "value": "14ckvqVtKZ94hbazH8AfZBfzxBwCque0Ii5MIcdZHNGU",
-          "mode": "list",
-          "cachedResultName": "Leads",
-          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/14ckvqVtKZ94hbazH8AfZBfzxBwCque0Ii5MIcdZHNGU/edit?usp=drivesdk"
+          "value": "={{ $('Prepare Request').first().json.config.spreadsheetId }}",
+          "mode": "id"
         },
         "sheetName": {
           "__rl": true,
-          "value": "gid=0",
-          "mode": "list",
-          "cachedResultName": "list1",
-          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/14ckvqVtKZ94hbazH8AfZBfzxBwCque0Ii5MIcdZHNGU/edit#gid=0"
+          "value": "={{ $('Prepare Request').first().json.config.sheetName }}",
+          "mode": "name"
         },
         "columns": {
           "mappingMode": "autoMapInputData",
@@ -266,16 +265,6 @@
               "removed": false
             },
             {
-              "id": "personal_emails",
-              "displayName": "personal_emails",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true,
-              "removed": false
-            },
-            {
               "id": "email_status",
               "displayName": "email_status",
               "required": false,
@@ -344,23 +333,13 @@
               "type": "string",
               "canBeUsedToMatch": true,
               "removed": false
-            },
-            {
-              "id": "googleSheets",
-              "displayName": "googleSheets",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true,
-              "removed": false
             }
           ],
           "attemptToConvertTypes": false,
           "convertFieldsToString": false
         },
         "options": {
-          "cellFormat": "USER_ENTERED",
+          "cellFormat": "RAW",
           "useAppend": true
         }
       },
@@ -371,17 +350,11 @@
       "position": [
         160,
         160
-      ],
-      "credentials": {
-        "googleSheetsOAuth2Api": {
-          "id": "m9gIELTga6UGvf4j",
-          "name": "Google Sheets account 2"
-        }
-      }
+      ]
     },
     {
       "parameters": {
-        "jsCode": "const run = $('Fetch Dievio Leads').first().json;\nconst writtenRows = $input.all().length;\n\nreturn [{\n  json: {\n    ok: true,\n    requestId: run.requestId,\n    message: 'Leads collected and written to Google Sheets.',\n    totalLeads: run.leadsCount,\n    writtenRows,\n    pagesFetched: run.pagesFetched,\n    sheetWritten: true,\n    spreadsheetId: run.config.googleSheets.spreadsheetId,\n    sheetName: run.config.googleSheets.sheetName\n  }\n}];"
+        "jsCode": "const run = $('Normalize Dievio Leads').first().json;\n\nreturn [{ json: {\n  ok: true,\n  requestId: run.requestId,\n  totalLeads: run.leadsCount,\n  writtenRows: run.leadsCount,\n  pagesFetched: run.pagesFetched,\n  hasMore: run.hasMore,\n  sheetWritten: true\n} }];"
       },
       "id": "build-success-response",
       "name": "Build Success Response",
@@ -409,7 +382,7 @@
     },
     {
       "parameters": {
-        "content": "## Dievio B2B Leads -> Google Sheets\n\n### What this template does\n- Accepts POST request with Dievio filters\n- Calls Dievio `POST /api/public/search` through HTTP Request node\n- Collects B2B contacts and appends rows to Google Sheets\n- Returns JSON summary to webhook caller\n\n### Required setup\n- Google Sheets OAuth2 credential in n8n\n- Spreadsheet with a target tab (sheet)\n- In node **Run Dievio Search**, set header **X-API-Key** to your Dievio API key\n\n### Dievio API docs\n- Overview: https://docs.dievio.com/api-reference/overview\n- Search: https://docs.dievio.com/api-reference/search\n- Filters: https://docs.dievio.com/api-reference/filters\n- Authentication: https://docs.dievio.com/api-reference/authentication",
+        "content": "## Dievio B2B leads to Google Sheets\nConfigure separate Header Auth credentials in Webhook In and Run Dievio Search. Set the destination in Prepare Request and connect your Google Sheets credential. Test with maxResults: 1 before activating.",
         "height": 700,
         "width": 760,
         "color": 7
@@ -425,7 +398,7 @@
     },
     {
       "parameters": {
-        "content": "## Example request\n\n### POST body\n```json\n{\n  \"spreadsheetId\": \"1AbCdEf...\",\n  \"sheetName\": \"Leads\",\n  \"perPage\": 100,\n  \"maxResults\": 1000,\n  \"includeEmails\": true,\n  \"includePhones\": false,\n  \"emailStatus\": \"verified\",\n  \"filters\": {\n    \"job_titles\": [\"Founder\", \"CEO\"],\n    \"job_title_seniority\": [\"owner\", \"cxo\"],\n    \"person_location_country\": [\"United States\"],\n    \"industries\": [\"Software\", \"SaaS\"],\n    \"business_model\": [\"b2b\"]\n  }\n}\n```\n\n### cURL\n```bash\ncurl -X POST 'https://YOUR_DOMAIN/webhook/dievio-b2b-leads' \\\n  -H 'Content-Type: application/json' \\\n  -d '{\"spreadsheetId\":\"1AbCdEf...\",\"sheetName\":\"Leads\",\"perPage\":100,\"maxResults\":1000,\"includeEmails\":true,\"filters\":{\"job_titles\":[\"Founder\"],\"person_location_country\":[\"United States\"]}}'\n```\n\n### Important\n- API key is configured in **Run Dievio Search** node header, not in webhook body.",
+        "content": "## Test request body\n```json\n{ \"maxResults\": 1, \"filters\": { \"job_titles\": [\"Founder\"] } }\n```",
         "height": 760,
         "width": 780,
         "color": 5
@@ -442,22 +415,20 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "={{$json.config.endpoint}}",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "X-API-Key",
-              "value": "PASTE_DIEVIO_API_KEY_HERE"
-            }
-          ]
-        },
+        "url": "https://dievio.com/api/public/search",
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={{$json.dievioBody}}",
         "options": {
-          "timeout": 120000
-        }
+          "timeout": 120000,
+          "redirect": {
+            "redirect": {
+              "followRedirects": false
+            }
+          }
+        },
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth"
       },
       "id": "run-dievio-search",
       "name": "Run Dievio Search",
@@ -470,7 +441,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const response = $json;\nconst ctx = $('Fetch Dievio Leads').first().json;\nconst rows = Array.isArray(response?.preview_data) ? response.preview_data : [];\n\nconst leads = rows.slice(0, ctx.config.maxResults).map((lead) => ({\n  request_id: ctx.requestId,\n  collected_at: new Date().toISOString(),\n  first_name: lead.first_name ?? '',\n  last_name: lead.last_name ?? '',\n  full_name: lead.full_name ?? [lead.first_name, lead.last_name].filter(Boolean).join(' '),\n  job_title: lead.job_title ?? '',\n  company: lead.company ?? '',\n  city: lead.city ?? '',\n  state: lead.state ?? '',\n  country: lead.country ?? '',\n  work_email: lead.work_email ?? '',\n  personal_emails: Array.isArray(lead.personal_emails) ? lead.personal_emails.join(', ') : (lead.personal_emails ?? ''),\n  email_status: lead.email_status ?? '',\n  mobile_phone: lead.mobile_phone ?? '',\n  phone_status: lead.phone_status ?? '',\n  linkedin_url: lead.linkedin_url ?? '',\n  linkedin_status: lead.linkedin_status ?? '',\n  twitter_status: lead.twitter_status ?? '',\n  facebook_status: lead.facebook_status ?? ''\n}));\n\nreturn [{\n  json: {\n    ok: true,\n    requestId: ctx.requestId,\n    config: ctx.config,\n    pagesFetched: 1,\n    leadsCount: leads.length,\n    leads\n  }\n}];"
+        "jsCode": "const response = $json;\nconst ctx = $('Fetch Dievio Leads').first().json;\nif (response.success !== true || !Array.isArray(response.preview_data)) {\n  throw new Error('Dievio search did not return the expected results.');\n}\nconst rows = response.preview_data;\n\nconst leads = rows.slice(0, ctx.config.maxResults).map((lead) => ({\n  request_id: ctx.requestId,\n  collected_at: new Date().toISOString(),\n  first_name: lead.first_name ?? '',\n  last_name: lead.last_name ?? '',\n  full_name: lead.full_name ?? [lead.first_name, lead.last_name].filter(Boolean).join(' '),\n  job_title: lead.job_title ?? '',\n  company: lead.company ?? '',\n  city: lead.city ?? '',\n  state: lead.state ?? '',\n  country: lead.country ?? '',\n  work_email: lead.work_email ?? '',\n  email_status: lead.email_status ?? '',\n  mobile_phone: lead.mobile_phone ?? '',\n  phone_status: lead.phone_status ?? '',\n  linkedin_url: lead.linkedin_url ?? '',\n  linkedin_status: lead.linkedin_status ?? '',\n  twitter_status: lead.twitter_status ?? '',\n  facebook_status: lead.facebook_status ?? ''\n}));\n\nreturn [{\n  json: {\n    ok: true,\n    requestId: ctx.requestId,\n    config: ctx.config,\n    pagesFetched: 1,\n    hasMore: response.has_more === true,\n    leadsCount: leads.length,\n    leads\n  }\n}];"
       },
       "id": "normalize-dievio-leads",
       "name": "Normalize Dievio Leads",
@@ -618,5 +589,7 @@
         ]
       ]
     }
-  }
+  },
+  "active": false,
+  "versionId": "263becef-ff08-4396-94df-897f2e1c4c8e"
 }
