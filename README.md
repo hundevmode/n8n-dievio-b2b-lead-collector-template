@@ -25,7 +25,7 @@ curl --request POST "$N8N_TEST_WEBHOOK_URL" \
   --data '{
     "maxResults": 1,
     "includeEmails": true,
-    "emailStatus": "verified",
+    "emailStatus": "work",
     "filters": {
       "company_websites": ["stripe.com"],
       "job_titles": ["Founder"]
@@ -33,11 +33,13 @@ curl --request POST "$N8N_TEST_WEBHOOK_URL" \
   }'
 ```
 
-Check that a row was added and that the JSON response shows `writtenRows: 1`. A search with no matches returns `writtenRows: 0` without calling Google Sheets. Once the test works, activate the workflow and switch your client to the production URL.
+When the search finds a match, check that a row was added and that the JSON response shows `writtenRows: 1`. A search with no matches returns `writtenRows: 0` and skips Google Sheets. Try a different company or title if you need to test a write. Once the test works, activate the workflow and switch your client to the production URL.
 
 Each run requests one page, with a default of one result and a maximum of 100. The response includes `hasMore` from Dievio. The workflow uses the API credit balance and appends the returned work contact fields. Phone retrieval is opt-in through `includePhones`. The webhook response contains counts rather than contact rows.
 
-Use `emailStatus: "verified"` to request records with an available work email. Check deliverability separately if your workflow requires it. If the Sheet write fails after a successful Dievio search, check the n8n execution before retrying. The API search may already have consumed credits.
+Use `emailStatus: "work"` with `includeEmails: true` to require a stored address in `work_email`. The default is `all`. The `verified` filter can include profiles with a personal email only. Check deliverability separately if your workflow requires it. [Search API filters](https://docs.dievio.com/api-reference/filters)
+
+If the Sheet write fails after a successful Dievio search, check the n8n execution before retrying. The API search may already have consumed credits.
 
 Each webhook call starts a separate search. If you build a custom workflow, you can retry the same Search API page within one hour using a stable `Idempotency-Key` from the first attempt. Handle repeat writes to Google Sheets separately. [Search API retry rules](https://docs.dievio.com/api-reference/search#retry-a-page-safely)
 

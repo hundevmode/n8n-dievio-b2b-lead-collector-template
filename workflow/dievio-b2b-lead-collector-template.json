@@ -26,7 +26,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const payload = $json.body ?? $json;\nconst spreadsheetId = 'REPLACE_WITH_SPREADSHEET_ID';\nconst sheetName = 'Leads';\n\nfunction invalid(error) {\n  return [{ json: { ok: false, error } }];\n}\n\nif (!payload || typeof payload !== 'object' || Array.isArray(payload)) {\n  return invalid('Send a JSON object.');\n}\nif (spreadsheetId === 'REPLACE_WITH_SPREADSHEET_ID' || !/^[A-Za-z0-9_-]+$/.test(spreadsheetId)) {\n  return invalid('Set the spreadsheet ID in Prepare Request before running this workflow.');\n}\nconst fixedSettings = ['endpoint', 'spreadsheetId', 'sheetId', 'sheetName', 'googleSheets', 'includeRaw', '_include_raw'];\nif (fixedSettings.some(key => Object.hasOwn(payload, key))) {\n  return invalid('The API endpoint and Google Sheets destination are configured in the workflow.');\n}\nconst maxResults = Number(payload.maxResults ?? 1);\nif (!Number.isInteger(maxResults) || maxResults < 1 || maxResults > 100) {\n  return invalid('maxResults must be an integer from 1 to 100.');\n}\nconst filters = payload.filters ?? {};\nif (!filters || typeof filters !== 'object' || Array.isArray(filters)) {\n  return invalid('filters must be a JSON object.');\n}\nconst emailStatus = payload.emailStatus ?? 'all';\nif (!['all', 'verified', 'likely'].includes(emailStatus)) {\n  return invalid('emailStatus must be all, verified or likely.');\n}\n\nreturn [{ json: {\n  ok: true,\n  requestId: 'dievio-' + $execution.id,\n  config: { spreadsheetId, sheetName, maxResults },\n  filters,\n  includeEmails: payload.includeEmails !== false,\n  includePhones: payload.includePhones === true,\n  emailStatus\n} }];"
+        "jsCode": "const payload = $json.body ?? $json;\nconst spreadsheetId = 'REPLACE_WITH_SPREADSHEET_ID';\nconst sheetName = 'Leads';\n\nfunction invalid(error) {\n  return [{ json: { ok: false, error } }];\n}\n\nif (!payload || typeof payload !== 'object' || Array.isArray(payload)) {\n  return invalid('Send a JSON object.');\n}\nif (spreadsheetId === 'REPLACE_WITH_SPREADSHEET_ID' || !/^[A-Za-z0-9_-]+$/.test(spreadsheetId)) {\n  return invalid('Set the spreadsheet ID in Prepare Request before running this workflow.');\n}\nconst fixedSettings = ['endpoint', 'spreadsheetId', 'sheetId', 'sheetName', 'googleSheets', 'includeRaw', '_include_raw'];\nif (fixedSettings.some(key => Object.hasOwn(payload, key))) {\n  return invalid('The API endpoint and Google Sheets destination are configured in the workflow.');\n}\nconst maxResults = Number(payload.maxResults ?? 1);\nif (!Number.isInteger(maxResults) || maxResults < 1 || maxResults > 100) {\n  return invalid('maxResults must be an integer from 1 to 100.');\n}\nconst filters = payload.filters ?? {};\nif (!filters || typeof filters !== 'object' || Array.isArray(filters)) {\n  return invalid('filters must be a JSON object.');\n}\nconst emailStatus = payload.emailStatus ?? 'all';\nif (!['all', 'verified', 'likely', 'work'].includes(emailStatus)) {\n  return invalid('emailStatus must be all, verified, likely or work.');\n}\nif (emailStatus === 'work' && payload.includeEmails === false) {\n  return invalid('Use includeEmails: true when requesting work email.');\n}\n\nreturn [{ json: {\n  ok: true,\n  requestId: 'dievio-' + $execution.id,\n  config: { spreadsheetId, sheetName, maxResults },\n  filters,\n  includeEmails: payload.includeEmails !== false,\n  includePhones: payload.includePhones === true,\n  emailStatus\n} }];"
       },
       "id": "prepare-request",
       "name": "Prepare Request",
@@ -422,7 +422,7 @@
     },
     {
       "parameters": {
-        "content": "## Test request body\n```json\n{ \"maxResults\": 1, \"filters\": { \"job_titles\": [\"Founder\"] } }\n```",
+        "content": "## Test request body\n```json\n{ \"maxResults\": 1, \"emailStatus\": \"work\", \"filters\": { \"company_websites\": [\"stripe.com\"], \"job_titles\": [\"Founder\"] } }\n```",
         "height": 760,
         "width": 780,
         "color": 5
@@ -615,5 +615,5 @@
     }
   },
   "active": false,
-  "versionId": "516d3e64-477f-4f6e-8d4a-934b82967940"
+  "versionId": "6f3fb5ed-4df4-4f7a-8c7c-0c32a57731b5"
 }

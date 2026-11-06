@@ -43,6 +43,20 @@ test('webhook input cannot override the destination, provider URL or paid reques
     })
 })
 
+test('work email mode is opt-in and reaches the API with email output enabled', () => {
+    for (const status of ['all', 'verified', 'likely', 'work']) {
+        const prepared = execute('Prepare Request', { body: { emailStatus: status } })
+        assert.equal(prepared.ok, true)
+        const { dievioBody } = execute('Fetch Dievio Leads', prepared)
+        assert.equal(dievioBody.email_status, status)
+        assert.equal(dievioBody.include_emails, true)
+    }
+    assert.equal(execute('Prepare Request', { body: { emailStatus: 'work', includeEmails: false } }).ok, false)
+    assert.equal(execute('Prepare Request', { body: { emailStatus: 'unsupported' } }).ok, false)
+    const legacy = execute('Prepare Request', { body: { emailStatus: 'verified', includeEmails: false } })
+    assert.equal(execute('Fetch Dievio Leads', legacy).dievioBody.include_emails, false)
+})
+
 test('the n8n v2 IF filters route rejected requests and empty results to their response nodes', () => {
     const validation = node('Is Request Valid?')
     const matches = node('Has Leads?')
